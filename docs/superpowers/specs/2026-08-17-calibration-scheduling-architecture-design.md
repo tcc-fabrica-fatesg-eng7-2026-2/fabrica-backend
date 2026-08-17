@@ -9,7 +9,7 @@ O backend atuará como o hub integrador e a fonte da verdade da rastreabilidade 
 Foi escolhida a arquitetura de **Microserviços Distribuídos Orientados a Eventos**, com o **Apache Kafka** atuando como espinha dorsal de mensageria assíncrona. 
 
 ### Microserviços Principais
-1. **Identity & Access Management (IAM Service):** Serviço de autenticação e autorização (RBAC), gerenciamento de usuários e perfis de acesso.
+1. **Identity & Access Management (IAM Service):** Serviço central de autenticação e autorização (RBAC) responsável por emitir e revalidar tokens JWT, além do gerenciamento de usuários e perfis.
 2. **Equipment Service (Core):** Domínio de parâmetros globais, instrumentos, equipamentos e estrutura organizacional das filiais.
 3. **Scheduling Service (Agendamentos):** Motor de regras de negócio de vencimentos, jobs de verificação diária e controle do aceite do instrumentista.
 4. **Integration Service (Ponte):** Gateway de comunicação com o ecossistema externo (API da Terceirizada e o ERP Corporativo).
@@ -92,7 +92,7 @@ A persistência garante isolamento lógico por fábrica aplicando o UUID `id_fil
 
 ### Requisitos Funcionais (RF)
 1. **Gestão de Cadastro (Multi-Filial):** CRUD completo dos ativos mantendo o Tenant ID (Filial).
-2. **Gestão de Usuários e Acessos:** Cadastro de usuários com perfis segregados (ADM vs INSTRUMENTISTA). Geração automática de usuário padrão admin. Todas as senhas protegidas com algoritmo Bcrypt.
+2. **Gestão de Usuários e Acessos (IAM):** Autenticação e Autorização de WebAPIs baseada em tokens JWT (com renovação a cada 1h via refresh token). Cadastro de usuários com perfis segregados (ADM vs INSTRUMENTISTA). Geração automática de usuário padrão admin e armazenamento de senhas com algoritmo Bcrypt.
 3. **Parâmetros Dinâmicos (Dicionário de Dados):** Sistema flexível de configuração de negócio, permitindo criar metadados (tipos numéricos, booleanos, textos ou listas) com atribuições globais (para o sistema todo) ou locais (por filial).
 4. **Controle de Automação:** Flag no cadastro do instrumento definindo agendamento manual ou fluxo automático (Machine-to-Machine).
 5. **Monitoramento Contínuo (Job):** Rotina Background para verificar janelas de vencimento baseadas na data da próxima calibração.
@@ -108,3 +108,4 @@ A persistência garante isolamento lógico por fábrica aplicando o UUID `id_fil
 3. **Resiliência Externa:** Padrões Circuit Breaker e Retries aplicados às chamadas saíntes para o ERP e Terceirizadas, absorvendo instabilidades das redes (Resilience4j).
 4. **Outbox Pattern:** Uso do padrão Transactional Outbox em cima das bases relacionais para garantir a entrega Atomic-Event no Kafka e prevenir vazamentos de dados por falha de broker.
 5. **Observabilidade Total:** Distributed Tracing obrigatório, integrando Trace/Span IDs end-to-end, facilitando depurações e leitura centralizada por APMs (ex: Zipkin/Jaeger).
+6. **Segurança de APIs (JWT):** Todos os endpoints expostos devem exigir Bearer Token. A estratégia de expiração deve invalidar tokens JWT estáticos a cada 1 hora, exigindo um fluxo de Refresh Token gerido pelo IAM para manter o acesso do usuário logado de forma segura.
