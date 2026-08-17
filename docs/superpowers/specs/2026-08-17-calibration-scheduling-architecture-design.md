@@ -9,22 +9,48 @@ O backend atuará como o hub integrador e a fonte da verdade da rastreabilidade 
 Foi escolhida a arquitetura de **Microserviços Distribuídos Orientados a Eventos**, com o **Apache Kafka** atuando como espinha dorsal de mensageria assíncrona. 
 
 ### Microserviços Principais
-1. **Equipment Service (Core):** Domínio de instrumentos, equipamentos e estrutura organizacional das filiais.
-2. **Scheduling Service (Agendamentos):** Motor de regras de negócio de vencimentos, jobs de verificação diária e controle do aceite do instrumentista.
-3. **Integration Service (Ponte):** Gateway de comunicação com o ecossistema externo (API da Terceirizada e o ERP Corporativo).
+1. **Identity & Access Management (IAM Service):** Serviço de autenticação e autorização (RBAC), gerenciamento de usuários e perfis de acesso.
+2. **Equipment Service (Core):** Domínio de parâmetros globais, instrumentos, equipamentos e estrutura organizacional das filiais.
+3. **Scheduling Service (Agendamentos):** Motor de regras de negócio de vencimentos, jobs de verificação diária e controle do aceite do instrumentista.
+4. **Integration Service (Ponte):** Gateway de comunicação com o ecossistema externo (API da Terceirizada e o ERP Corporativo).
 
 ## 3. Modelagem Relacional (MER) - Estrutura Lógica Base
-A persistência garante isolamento lógico por fábrica aplicando o UUID `id_filial` a todas as tabelas de domínio.
+A persistência garante isolamento lógico por fábrica aplicando o UUID `id_filial` à maior parte das tabelas de domínio.
 
 **1. `filial` (Tenant)**
 - `id_filial` (PK, UUID)
 - `nome`, `cnpj`, `endereco`
 
-**2. `empresa_terceirizada`**
+**2. `usuario` (IAM)**
+- `id_usuario` (PK, UUID)
+- `id_filial` (FK - podendo ser '-1' ou Nulo para o admin global do sistema)
+- `login`, `senha_hash` (Armazenado via Bcrypt)
+- `role` (Enum: ADM, INSTRUMENTISTA)
+- *Nota:* O sistema deverá inicializar automaticamente com um usuário padrão (`login: admin`, `senha: admin` - com hash aplicado).
+
+**3. `parametro_metadado` (Dicionário de Parâmetros)**
+- `id_parametro` (PK, String/UUID)
+- `descricao` (String)
+- `por_filial` (Boolean)
+- `tipo_valor` (Enum: NUMERO, LISTA, BOOLEAN, TEXTO)
+
+**4. `parametro_valor` (Valores Aplicados)**
+- `id_valor` (PK, UUID)
+- `id_parametro` (FK)
+- `id_filial` (Identificador da filial ou '-1' caso o parâmetro seja global, i.e., `por_filial = false`)
+- `valor_parametro` (String/Texto comportando o valor convertido)
+
+**5. `parametro_lista_valores` (Opções para parâmetros do tipo LISTA)**
+- `id_lista_valor` (PK, UUID)
+- `id_parametro` (FK)
+- `descricao` (Ex: "Ativo", "Inativo", "Prioridade Alta")
+- `valor_armazenado` (Ex: "1", "0", "HIGH")
+
+**6. `empresa_terceirizada`**
 - `id_terceirizada` (PK, UUID)
 - `cnpj`, `nome`
 
-**3. `instrumento`**
+**7. `instrumento`**
 - `id_instrumento` (PK, UUID)
 - `id_filial` (FK - Isolamento por fábrica)
 - `tag`, `cor_etiqueta`, `nome`, `area`, `localizacao`
@@ -35,14 +61,14 @@ A persistência garante isolamento lógico por fábrica aplicando o UUID `id_fil
 - `unidade_medida`, `numero_sap`, `numero_plano`
 - `agendamento_automatico` (Boolean - Parametriza o fluxo de gatilho)
 
-**4. `agendamento_calibracao`**
+**8. `agendamento_calibracao`**
 - `id_agendamento` (PK, UUID)
 - `id_instrumento` (FK)
 - `id_terceirizada` (FK)
 - `data_calibracao_atual`, `data_proxima_calibracao`
 - `status` (Enum: PENDENTE_AVISO, AGUARDANDO_APROVACAO, AGENDADO_NA_TERCEIRIZADA, CONCLUIDO, VENCIDO)
 
-**5. `certificado`**
+**9. `certificado`**
 - `id_certificado` (PK, UUID)
 - `id_agendamento` (FK)
 - `numero_certificado_anterior`, `numero_certificado_atual`
@@ -66,13 +92,15 @@ A persistência garante isolamento lógico por fábrica aplicando o UUID `id_fil
 
 ### Requisitos Funcionais (RF)
 1. **Gestão de Cadastro (Multi-Filial):** CRUD completo dos ativos mantendo o Tenant ID (Filial).
-2. **Controle de Automação:** Flag no cadastro do instrumento definindo agendamento manual ou fluxo automático (Machine-to-Machine).
-3. **Monitoramento Contínuo (Job):** Rotina Background para verificar janelas de vencimento baseadas na data da próxima calibração.
-4. **Notificações:** Disparo de alertas aos usuários da respectiva filial sempre que um agendamento entrar no status PENDENTE_AVISO.
-5. **Aprovação Manual:** Interface ou endpoint permitindo o "Aceite" do instrumentista em workflows não automatizados.
-6. **Recepção de Certificados:** Endpoint (Webhook) dedicado a receber certificados, erro máximo, erro atual e tolerâncias fornecidos pela provedora de calibração.
-7. **Integração ERP:** Envio sistemático do pacote de dados da calibração concluída para o ERP central.
-8. **Histórico:** Retorno do tracking e log linear de todas as calibrações passadas de um determinado TAG de instrumento.
+2. **Gestão de Usuários e Acessos:** Cadastro de usuários com perfis segregados (ADM vs INSTRUMENTISTA). Geração automática de usuário padrão admin. Todas as senhas protegidas com algoritmo Bcrypt.
+3. **Parâmetros Dinâmicos (Dicionário de Dados):** Sistema flexível de configuração de negócio, permitindo criar metadados (tipos numéricos, booleanos, textos ou listas) com atribuições globais (para o sistema todo) ou locais (por filial).
+4. **Controle de Automação:** Flag no cadastro do instrumento definindo agendamento manual ou fluxo automático (Machine-to-Machine).
+5. **Monitoramento Contínuo (Job):** Rotina Background para verificar janelas de vencimento baseadas na data da próxima calibração.
+6. **Notificações:** Disparo de alertas aos usuários da respectiva filial sempre que um agendamento entrar no status PENDENTE_AVISO.
+7. **Aprovação Manual:** Interface ou endpoint permitindo o "Aceite" do instrumentista em workflows não automatizados.
+8. **Recepção de Certificados:** Endpoint (Webhook) dedicado a receber certificados, erro máximo, erro atual e tolerâncias fornecidos pela provedora de calibração.
+9. **Integração ERP:** Envio sistemático do pacote de dados da calibração concluída para o ERP central.
+10. **Histórico:** Retorno do tracking e log linear de todas as calibrações passadas de um determinado TAG de instrumento.
 
 ### Requisitos Não Funcionais (RNF)
 1. **Arquitetura Assíncrona:** Separação de fronteiras com DDD, construída sob Spring Boot e mensageria distribuída com Apache Kafka.
