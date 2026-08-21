@@ -1,0 +1,17 @@
+server:
+  port: 8082
+spring:
+  application:
+    name: equipment-service
+  datasource:
+    url: jdbc:h2:mem:equipmentdb
+    username: sa
+    password: 
+  jpa:
+    hibernate:
+      ddl-auto: update
+  kafka:
+    producer:
+      bootstrap-servers: localhost:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
